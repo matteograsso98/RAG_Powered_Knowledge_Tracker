@@ -44,33 +44,6 @@ Performance & scaling
 - Security & Privacy. Keep embeddings and local files private. If using cloud APIs, be aware of data sharing.
 - The ingestion script appends new chunks and adds to FAISS. If you change chunking or embedding model, rebuild index from scratch (script to drop old FAISS and re-ingest).
 
- 
-
-The folder structure is: 
-
-~~~
-research-rag/
-├─ ingest.py               # ingestion script
-├─ retrieve_rag.py         # retrieval + RAG helper
-├─ app.py                  # simple Flask GUI
-├─ schema.sql              # optional schema dump
-├─ requirements.txt
-├─ README.md
-├─ templates/
-│   ├─ index.html 
-│   ├─ doc.html
-│   └─ search.html
-├─ static/
-│   └─ (css/js assets)
-├─ data/
-│   ├─ docs/                # store original files (pdf/docx)
-│   ├─ faiss_index.bin #  created once the GUI runs 
-│   └─ faiss_index.bin.ids.json # created once the GUI runs 
-├─ rag_library.db # created after first run 
-└─ utils/
-   ├─ extractors.py
-   └─ scoring.py
-~~~
 
 When you first run the code: 
 ~~~
