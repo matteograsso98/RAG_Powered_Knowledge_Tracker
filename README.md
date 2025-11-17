@@ -69,3 +69,11 @@ research-rag/
    ├─ extractors.py
    └─ scoring.py
 ~~~
+
+When you first run the code: 
+~~~
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+~~~

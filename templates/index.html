@@ -1,51 +1,73 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Research Library</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
+{% extends "layout.html" %}
 
-<nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="/">Research Library</a>
-        <form class="d-flex" action="/search" method="get">
-            <input class="form-control me-2" type="search" placeholder="Search…" name="q">
-            <button class="btn btn-outline-light" type="submit">Search</button>
-        </form>
+{% block content %}
+
+{% if not selected_category %}
+    <h2 class="text-3xl font-light mb-8 text-center">Select a Main Knowledge Area</h2>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 max-w-6xl mx-auto">
+        {% for cat in categories %}
+            {% if not cat.parent %} 
+                <a href="{{ url_for('index', category_id=cat.id) }}" 
+                   class="bg-card-gemini border border-gemini p-6 rounded-xl shadow-xl hover:bg-[#34343a] transition-all duration-200 block group">
+                    <div class="flex items-center justify-between">
+                        <i class="fa-solid fa-folder-open text-2xl text-indigo-400 group-hover:text-indigo-300"></i>
+                        <span class="text-xs text-gray-400">{{ cat.children|length }} Sub-Areas</span>
+                    </div>
+                    <h3 class="mt-4 text-xl font-semibold text-light group-hover:text-indigo-200 transition">
+                        {{ cat.name }}
+                    </h3>
+                    <p class="text-sm text-gray-400 mt-1">
+                        View documents related to {{ cat.name }}.
+                    </p>
+                </a>
+            {% endif %}
+        {% endfor %}
     </div>
-</nav>
 
-<div class="container">
-    <h3 class="mb-3">Recent Documents</h3>
-    <table class="table table-striped table-bordered bg-white">
-        <thead class="table-dark">
-            <tr>
-                <th>Title</th>
-                <th>Relevance</th>
-                <th>Accesses</th>
-                <th>Open</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for d in docs %}
-            <tr>
-                <td>{{ d[1] }}</td>
-                <td>
-                    {% if d[3] != None %}
-                        ★ {{ d[3] }} (manual)
-                    {% else %}
-                        ★ {{ "%.1f"|format(d[4]) }} (auto)
-                    {% endif %}
-                </td>
-                <td>{{ d[5] }}</td>
-                <td><a class="btn btn-sm btn-primary" href="/doc/{{ d[0] }}">View</a></td>
-            </tr>
+{% else %}
+    <div class="max-w-4xl mx-auto">
+        <a href="{{ url_for('index') }}" class="text-indigo-400 hover:text-indigo-300 mb-6 inline-block text-sm">
+            &larr; Back to Categories
+        </a>
+
+        <div class="flex items-end justify-between border-b border-gemini pb-3 mb-6">
+            <h2 class="text-2xl font-bold text-light">
+                {{ (categories|selectattr('id', '==', selected_category)|first).name }} Documents
+            </h2>
+            <span class="text-sm text-gray-400">{{ docs|length }} Files</span>
+        </div>
+
+        <div class="space-y-4">
+            {% for doc in docs %}
+            <a href="{{ url_for('view_doc', doc_id=doc[0]) }}" class="bg-card-gemini border border-gemini p-4 rounded-lg flex items-center justify-between hover:bg-[#34343a] transition">
+                <div class="flex items-center">
+                    <i class="fa-solid fa-file-lines text-indigo-400 mr-4 flex-shrink-0"></i>
+                    <div class="truncate">
+                        <div class="text-sm font-medium text-light truncate">{{ doc[1] }}</div>
+                        <div class="text-xs text-gray-400 truncate">{{ doc[2] }}</div>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4 flex-shrink-0">
+                    <div class="flex text-yellow-400 text-xs" title="Personal Relevance">
+                        {% for i in range(1, 6) %}
+                            {% if i <= doc[3] %}
+                                <i class="fa-solid fa-star"></i>
+                            {% else %}
+                                <i class="fa-regular fa-star text-gray-600"></i>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    <span class="text-xs text-gray-400">{{ doc[5] }} Views</span>
+                </div>
+            </a>
+            {% else %}
+            <div class="p-12 text-center bg-card-gemini rounded-lg border border-gemini">
+                <p class="text-gray-400">No documents found in this area.</p>
+            </div>
             {% endfor %}
-        </tbody>
-    </table>
-</div>
+        </div>
+    </div>
+{% endif %}
 
-</body>
-</html>
+{% endblock %}

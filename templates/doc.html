@@ -1,63 +1,47 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>{{ doc[1] }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
+{% extends "layout.html" %}
 
-<nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="/">Research Library</a>
-    </div>
-</nav>
-
-<div class="container">
-
-    <h2>{{ doc[1] }}</h2>
-    <p><strong>Filename:</strong> {{ doc[2] }}</p>
-
-    <p>
-        <strong>Relevance:</strong>
-        {% if doc[3] != None %}
-            ★ {{ doc[3] }} (manual)
-        {% else %}
-            ★ {{ "%.1f"|format(doc[4]) }} (auto)
-        {% endif %}
-    </p>
-
-    <p><strong>Access Count:</strong> {{ doc[5] }}</p>
-
-    <hr>
-
-    <h4>Rate this document</h4>
-    <form action="/rate" method="post" class="mb-4">
-        <input type="hidden" name="doc_id" value="{{ doc[0] }}">
-        <select name="stars" class="form-select w-auto d-inline">
-            <option value="1">★ 1</option>
-            <option value="2">★ 2</option>
-            <option value="3">★ 3</option>
-            <option value="4">★ 4</option>
-            <option value="5">★ 5</option>
-        </select>
-        <button class="btn btn-primary" type="submit">Save</button>
-    </form>
-
-    <hr>
-
-    <h4>Preview (first chunks)</h4>
-    {% for ch in chunks %}
-        <div class="card mb-3">
-            <div class="card-header">
-                Chunk {{ ch[0] }}
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <a href="{{ url_for('index', category_id=doc[4]) }}" class="text-sm text-indigo-400 hover:text-indigo-300 mb-6 inline-block">
+        &larr; Back to Document List
+    </a>
+    
+    <div class="bg-card-gemini p-8 rounded-xl shadow-lg border border-gemini">
+        <div class="flex justify-between items-start mb-6">
+            <div>
+                <h1 class="text-3xl font-bold text-light mb-2">{{ doc[1] }}</h1>
+                <div class="flex items-center space-x-4 text-sm text-gray-400">
+                    <span class="bg-dark-gemini px-2 py-1 rounded">
+                        <i class="fa-solid fa-file ml-1"></i> {{ doc[2] }}
+                    </span>
+                    <span><i class="fa-solid fa-eye ml-1"></i> {{ doc[5] }} Views</span>
+                </div>
             </div>
-            <div class="card-body">
-                <pre style="white-space:pre-wrap;">{{ ch[1] }}</pre>
+
+            <div class="text-right">
+                <p class="text-xs text-gray-400 uppercase font-bold mb-1">Your Rating</p>
+                <form action="{{ url_for('rate_doc') }}" method="POST" class="flex items-center space-x-1">
+                    <input type="hidden" name="doc_id" value="{{ doc[0] }}">
+                    <div class="flex flex-row-reverse justify-end">
+                        {% for i in range(5, 0, -1) %}
+                            <button type="submit" name="stars" value="{{ i }}" 
+                                class="p-1 focus:outline-none transition-colors duration-200 
+                                {% if doc[3] >= i %} text-yellow-400 hover:text-yellow-300 {% else %} text-gray-600 hover:text-yellow-400 {% endif %}">
+                                <i class="fa-solid fa-star text-2xl"></i>
+                            </button>
+                        {% endfor %}
+                    </div>
+                </form>
             </div>
         </div>
-    {% endfor %}
-</div>
 
-</body>
-</html>
+        <div class="mt-6 p-6 border border-gemini rounded-lg bg-dark-gemini">
+            <p class="text-gray-400 text-sm italic">
+                RAG functionality is active for searching, but the full document content is not displayed on this page.
+                To read, open the file from your local disk at 
+                <span class="font-mono text-indigo-300">{{ doc[6] if doc[6] else 'Path not available' }}</span>.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

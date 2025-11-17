@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knowledge Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        /* Custom Gemini-like dark theme colors */
+        .bg-dark-gemini { background-color: #1f1f22; }
+        .bg-card-gemini { background-color: #2b2b30; }
+        .text-light { color: #e8eaed; }
+        .border-gemini { border-color: #4a4a50; }
+    </style>
+</head>
+<body class="bg-dark-gemini text-light h-screen flex flex-col overflow-hidden">
+
+    <header class="bg-card-gemini border-b border-gemini py-4 px-8 flex items-center justify-between flex-shrink-0">
+        <h1 class="text-2xl font-bold text-indigo-400 tracking-tight flex items-center">
+            <a href="{{ url_for('index') }}" class="flex items-center hover:text-indigo-300 transition">
+                <i class="fa-solid fa-book-open-reader mr-3"></i>Knowledge Tracker
+            </a>
+        </h1>
+        
+        <div class="flex-1 max-w-xl mx-auto">
+            <form action="{{ url_for('search') }}" method="GET" class="relative">
+                <span class="absolute inset-y-0 left-0 pl-4 flex items-center text-gray-400">
+                    <i class="fa-solid fa-search"></i>
+                </span>
+                <input type="text" name="q" placeholder="Ask your knowledge base..." 
+                       value="{{ query if query else '' }}"
+                       class="block w-full pl-12 pr-4 py-2 border border-gemini rounded-full leading-5 bg-dark-gemini placeholder-gray-500 focus:outline-none focus:bg-card-gemini focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-light sm:text-sm transition duration-150 ease-in-out">
+            </form>
+        </div>
+        <div class="w-64"></div> </header>
+
+    <main class="flex-1 overflow-y-auto p-10">
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
+</html>
