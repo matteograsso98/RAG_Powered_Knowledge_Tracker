@@ -1,4 +1,14 @@
 import os
+# --- THREAD CONTROL (MUST BE FIRST) ---
+# Prevents Segmentation Fault 11 on macOS by forcing single-threaded operation for libraries
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import sqlite3
 import hashlib
 import json
@@ -6,8 +16,13 @@ import time
 import faiss
 import numpy as np
 from pathlib import Path
-from sentence_transformers import SentenceTransformer
 from PyPDF2 import PdfReader
+
+# Add this right after your imports, BEFORE loading SentenceTransformer
+if __name__ == "__main__":
+    multiprocessing.set_start_method('fork', force=True)
+
+from sentence_transformers import SentenceTransformer
 
 # --- Configuration ---
 DB_PATH = "rag_library.db"
@@ -18,61 +33,115 @@ CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
 
 # -------------------------------------------------------
-# VectorStore Class (Fixes ImportError and ID alignment)
+# VectorStore Class (IndexFlatIP + IDMap)
 # -------------------------------------------------------
 class VectorStore:
-    def __init__(self, index_path=FAISS_INDEX_PATH, dim=384):
+    def __init__(self, index_path=FAISS_INDEX_PATH, dim=None, model: SentenceTransformer = None):
         self.index_path = index_path
         self.dim = dim
         self.index = None
+        self.model = model
         self.load()
 
+    def _create_index(self, dim):
+        base_index = faiss.IndexFlatIP(dim)
+        idx = faiss.IndexIDMap(base_index)
+        return idx
+
     def load(self):
-        """Load index from disk or create a new IDMap index."""
         if os.path.exists(self.index_path):
             self.index = faiss.read_index(self.index_path)
+            self.dim = self.index.d
         else:
-            # IndexIDMap allows us to supply specific IDs (chunk_ids) 
-            # rather than having FAISS auto-increment them.
-            base_index = faiss.IndexFlatL2(self.dim)
-            self.index = faiss.IndexIDMap(base_index)
+            if self.dim is None:
+                self.index = None
+            else:
+                self.index = self._create_index(self.dim)
 
-    def add(self, vectors, ids):
-        """
-        vectors: np.array of shape (n, dim)
-        ids: list of integers (chunk_ids from DB)
-        """
-        if not isinstance(vectors, np.ndarray):
-            vectors = np.array(vectors).astype('float32')
-        
+    def save(self):
+        if self.index is None:
+            return
+        os.makedirs(os.path.dirname(self.index_path) or ".", exist_ok=True)
+        faiss.write_index(self.index, self.index_path)
+        print(f"FAISS index saved to {self.index_path}")
+
+    def add(self, vectors: np.ndarray, ids: list):
+        if len(ids) == 0:
+            return
+        vectors = np.asarray(vectors)
+        if vectors.ndim == 1:
+            vectors = vectors.reshape(1, -1)
+        if vectors.dtype != np.float32:
+            vectors = vectors.astype('float32')
+
+        if self.index is None:
+            self.dim = vectors.shape[1]
+            self.index = self._create_index(self.dim)
+
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-9
+        vectors = vectors / norms
+
         ids_np = np.array(ids).astype('int64')
         self.index.add_with_ids(vectors, ids_np)
 
-    def remove(self, ids):
-        """Remove vectors by their specific Chunk IDs."""
+    def remove(self, ids: list):
         if not ids:
             return
         ids_np = np.array(ids).astype('int64')
-        self.index.remove_ids(ids_np)
+        try:
+            self.index.remove_ids(ids_np)
+        except Exception as e:
+            print("Warning: remove_ids failed, falling back to rebuild-index approach:", e)
+            self._rebuild_excluding(ids_np.tolist())
 
-    def save(self):
-        """Save index to disk."""
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
-        faiss.write_index(self.index, self.index_path)
+    def _rebuild_excluding(self, exclude_ids: list):
+        print("Rebuilding FAISS index excluding", len(exclude_ids), "ids (this may be slow)...")
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT id, text FROM chunks WHERE id NOT IN (%s)" %
+                    ",".join("?" * len(exclude_ids)), tuple(exclude_ids))
+        rows = cur.fetchall()
+        conn.close()
 
-    def search(self, query_vector, k=5):
-        """Returns list of (chunk_id, score)"""
-        if self.index.ntotal == 0:
+        vecs = []
+        ids = []
+        if not rows:
+            self.index = self._create_index(self.dim or 1)
+            return
+
+        if self.model is None:
+            model = SentenceTransformer(EMBED_MODEL)
+        else:
+            model = self.model
+
+        for r in rows:
+            cid, txt = r
+            emb = model.encode(txt, normalize_embeddings=True).astype('float32')
+            vecs.append(emb)
+            ids.append(int(cid))
+
+        self.index = self._create_index(vecs[0].shape[0])
+        self.add(np.vstack(vecs), ids)
+        conn.close()
+        print("Rebuild complete.")
+
+    def search(self, query_vector: np.ndarray, k=5):
+        if self.index is None or self.index.ntotal == 0:
             return []
-        
-        distances, indices = self.index.search(query_vector.astype('float32'), k)
-        
+        q = np.asarray(query_vector)
+        if q.ndim == 1:
+            q = q.reshape(1, -1)
+        if q.dtype != np.float32:
+            q = q.astype('float32')
+        norm = np.linalg.norm(q, axis=1, keepdims=True)
+        norm[norm == 0] = 1e-9
+        q = q / norm
+        distances, indices = self.index.search(q, k)
         results = []
-        # indices[0] contains the IDs we passed in add_with_ids
-        for dist, idx in zip(distances[0], indices[0]):
-            if idx != -1:
-                results.append((int(idx), float(dist)))
+        for score, idx in zip(distances[0], indices[0]):
+            if idx == -1: continue
+            results.append((int(idx), float(score)))
         return results
 
 # -------------------------------------------------------
@@ -87,37 +156,41 @@ def hash_file(path):
         h.update(f.read())
     return h.hexdigest()
 
-def chunk_text(text, size=1200, overlap=200):
+def chunk_text(text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
     chunks = []
     start = 0
-    if not text: return []
+    if not text:
+        return []
     while start < len(text):
         end = start + size
         chunks.append(text[start:end])
-        start = end - overlap
+        start = max(end - overlap, end) if end - overlap > start else end
     return chunks
 
-def extract_text(path):
+def extract_text(path: Path):
     ext = path.suffix.lower()
+    # Returns list of (page_number, text)
     if ext == ".pdf":
+        pages = []
         try:
             reader = PdfReader(path)
-            text = ""
-            for p in reader.pages:
-                text += p.extract_text() or ""
-            return clean_text(text)
+            for i, p in enumerate(reader.pages):
+                txt = p.extract_text() or ""
+                pages.append((i + 1, clean_text(txt)))
+            return pages
         except Exception as e:
             print(f"Error reading PDF {path}: {e}")
-            return ""
+            return []
     elif ext in [".txt", ".md"]:
         try:
-            return clean_text(path.read_text(encoding="utf-8", errors="ignore"))
+            txt = clean_text(path.read_text(encoding="utf-8", errors="ignore"))
+            return [(None, txt)]
         except Exception as e:
-             print(f"Error reading Text file {path}: {e}")
-             return ""
+            print(f"Error reading Text file {path}: {e}")
+            return []
     else:
         print(f"Skipping unsupported file: {path}")
-        return ""
+        return []
 
 # -------------------------------------------------------
 # DB Categories
@@ -144,21 +217,11 @@ def get_or_create_category(conn, path_parts):
     return parent_id
 
 def cleanup_empty_categories(conn):
-    """
-    Recursively removes categories that have no associated documents 
-    and no child categories.
-    """
     cur = conn.cursor()
-    print("🧹 Cleaning up empty categories...")
+    print("Cleaning up empty categories...")
     changes_made = True
-    
-    # Loop until no more empty categories are found (ensures nested subfolders are cleaned)
     while changes_made:
         changes_made = False
-        
-        # Select category IDs that are empty: 
-        # 1. No child categories AND 
-        # 2. No associated documents
         cur.execute("""
             SELECT c.id 
             FROM categories c
@@ -166,19 +229,15 @@ def cleanup_empty_categories(conn):
             WHERE c.id NOT IN (SELECT DISTINCT parent_id FROM categories WHERE parent_id IS NOT NULL)
             AND d.id IS NULL
         """)
-        
         ids_to_delete = [row[0] for row in cur.fetchall()]
-        
         if ids_to_delete:
-            # Delete categories
             placeholders = ",".join("?" * len(ids_to_delete))
             cur.execute(f"DELETE FROM categories WHERE id IN ({placeholders})", ids_to_delete)
             conn.commit()
             print(f"   Deleted {len(ids_to_delete)} empty categories.")
             changes_made = True
-        
     if not changes_made:
-        print("   Category cleanup finished (no empty categories remaining).")
+        print("   Category cleanup finished.")
 
 # -------------------------------------------------------
 # Main Ingestion Logic
@@ -191,7 +250,7 @@ def ingest_documents():
     embed_dim = model.get_sentence_embedding_dimension()
     
     # Initialize Vector Store
-    vs = VectorStore(dim=embed_dim)
+    vs = VectorStore(dim=embed_dim, model=model)
 
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
@@ -221,6 +280,7 @@ def ingest_documents():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         document_id INTEGER,
         chunk_index INTEGER,
+        page_number INTEGER,
         text TEXT,
         FOREIGN KEY(document_id) REFERENCES documents(id)
     );
@@ -240,63 +300,98 @@ def ingest_documents():
         except ValueError:
             rel_path = Path(".")
 
-        # Create Categories
         category_parts = [] if str(rel_path) == "." else list(rel_path.parts)
         category_id = get_or_create_category(conn, category_parts) if category_parts else None
 
         for fname in files:
             full_path = root_path / fname
-            if full_path.name.startswith('.'): continue # skip hidden files
-            
+            if full_path.name.startswith('.'): continue
+
             file_hash = hash_file(full_path)
-            
-            # Check DB
+
             cur.execute("SELECT id, file_hash, category_id FROM documents WHERE filename = ?", (fname,))
             row = cur.fetchone()
 
             if row:
                 doc_id, old_hash, old_category_id = row
-                
-                # Check 1: Has the file content changed? (Standard RAG update)
+
+                # UPDATE LOGIC
                 if old_hash != file_hash:
-                    # Logic to remove old chunks, re-chunk, re-embed, and update hash
-                    # (Your existing re-ingestion logic goes here)
-                    # ...
-                    pass # Ensure you update the category_id here as well
-                
-                # Check 2: Has the file location (category) changed? (Folder structure update)
-                if old_category_id != category_id:
+                    print(f"♻️ Updating changed file: {fname}")
+                    cur.execute("SELECT id FROM chunks WHERE document_id = ?", (doc_id,))
+                    old_chunk_ids = [r[0] for r in cur.fetchall()]
+                    if old_chunk_ids:
+                        try:
+                            vs.remove(old_chunk_ids)
+                        except Exception as e:
+                            print("Warning removing old vectors:", e)
+                        placeholders = ",".join("?" * len(old_chunk_ids))
+                        cur.execute(f"DELETE FROM chunks WHERE id IN ({placeholders})", tuple(old_chunk_ids))
+
+                    pages_data = extract_text(full_path)
+                    if not pages_data:
+                        cur.execute("UPDATE documents SET file_hash=?, file_path=?, category_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                    (file_hash, str(full_path), category_id, doc_id))
+                        conn.commit()
+                        continue
+
+                    new_ids, new_vecs = [], []
+                    chunk_index_counter = 0
+
+                    for page_num, page_text in pages_data:
+                        page_chunks = chunk_text(page_text, CHUNK_SIZE, CHUNK_OVERLAP)
+                        for chunk in page_chunks:
+                            cur.execute(
+                                "INSERT INTO chunks (document_id, chunk_index, page_number, text) VALUES (?, ?, ?, ?)", 
+                                (doc_id, chunk_index_counter, page_num, chunk)
+                            )
+                            cid = cur.lastrowid
+                            new_ids.append(cid)
+                            new_vecs.append(model.encode(chunk, normalize_embeddings=True).astype('float32'))
+                            chunk_index_counter += 1
+
+                    if new_ids:
+                        vs.add(np.vstack(new_vecs), new_ids)
+
+                    cur.execute("UPDATE documents SET file_hash=?, file_path=?, category_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                (file_hash, str(full_path), category_id, doc_id))
+                    conn.commit()
+
+                elif old_category_id != category_id:
                     print(f"🔄 Document category updated: {fname}")
-                    cur.execute("UPDATE documents SET category_id=?, file_path=?, file_hash=? WHERE id=?", 
+                    cur.execute("UPDATE documents SET category_id=?, file_path=?, file_hash=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", 
                                 (category_id, str(full_path), file_hash, doc_id))
                     conn.commit()
-                    # We don't need to re-embed if the hash is the same, just update metadata.
-                
-            else:
-                # New File (Original ingestion logic)
-                print(f"➕ Ingesting new: {fname}")
-                text = extract_text(full_path)
-                if not text: continue
 
-                chunks = chunk_text(text, CHUNK_SIZE, CHUNK_OVERLAP)
-                
+            else:
+                # NEW FILE LOGIC
+                print(f"➕ Ingesting new: {fname}")
+                pages_data = extract_text(full_path)
+                if not pages_data: continue
+
                 cur.execute(
                     "INSERT INTO documents (title, filename, file_path, category_id, file_hash) VALUES (?, ?, ?, ?, ?)",
                     (fname, fname, str(full_path), category_id, file_hash)
                 )
                 doc_id = cur.lastrowid
                 
-                new_ids = []
-                new_vecs = []
-                
-                for idx, chunk in enumerate(chunks):
-                    cur.execute("INSERT INTO chunks (document_id, chunk_index, text) VALUES (?, ?, ?)", (doc_id, idx, chunk))
-                    cid = cur.lastrowid
-                    new_ids.append(cid)
-                    new_vecs.append(model.encode(chunk))
+                new_ids, new_vecs = [], []
+                chunk_index_counter = 0
+
+                for page_num, page_text in pages_data:
+                    page_chunks = chunk_text(page_text, CHUNK_SIZE, CHUNK_OVERLAP)
+                    for chunk in page_chunks:
+                        cur.execute(
+                            "INSERT INTO chunks (document_id, chunk_index, page_number, text) VALUES (?, ?, ?, ?)", 
+                            (doc_id, chunk_index_counter, page_num, chunk)
+                        )
+                        cid = cur.lastrowid
+                        new_ids.append(cid)
+                        new_vecs.append(model.encode(chunk, normalize_embeddings=True).astype('float32'))
+                        chunk_index_counter += 1
                 
                 if new_ids:
-                    vs.add(np.array(new_vecs), new_ids)
+                    vs.add(np.vstack(new_vecs), new_ids)
                 
                 conn.commit()
 
@@ -310,9 +405,7 @@ if __name__ == "__main__":
         os.makedirs(DATA_ROOT)
         print(f"Created {DATA_ROOT}. Put your PDFs there!")
     ingest_documents()
-
     conn = sqlite3.connect(DB_PATH)
     cleanup_empty_categories(conn)
     conn.close()
-    
     print(f"Done in {time.time() - t0:.2f} seconds")

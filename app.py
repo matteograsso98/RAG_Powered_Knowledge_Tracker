@@ -1,7 +1,8 @@
 # app.py
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
 import sqlite3
-from retrieve_rag import retrieve, get_db_conn
+# MODIFICATION: Import generate_rag_answer
+from retrieve_rag import retrieve, get_db_conn, generate_rag_answer 
 from utils.categories import get_or_create_category
 
 app = Flask(__name__)
@@ -10,12 +11,12 @@ DB = "rag_library.db"
 def db_conn():
     return sqlite3.connect(DB)
 
+# ... (keep fetch_categories and index route exactly as they were) ...
 # helper to fetch category tree
 def fetch_categories(conn):
     cur = conn.cursor()
     cur.execute("SELECT id, parent_id, name FROM categories ORDER BY parent_id NULLS FIRST, name")
     rows = cur.fetchall()
-    # build simple nested dict
     tree = {}
     by_id = {}
     for r in rows:
@@ -38,10 +39,6 @@ def index():
     params = []
     
     if category_id is not None:
-        # Find all descendants of the current category (including itself)
-        # This requires a recursive CTE (Common Table Expression) for SQLite 3.8.3+
-        # If your SQLite is older, this will fail. Assuming modern SQLite:
-        
         cur.execute("""
             WITH RECURSIVE SubCategories (id) AS (
                 SELECT ? 
@@ -70,22 +67,16 @@ def index():
 
 @app.route("/doc/<int:doc_id>")
 def view_doc(doc_id):
-    conn = get_db_conn() # Use the consistent get_db_conn() function
+    conn = get_db_conn() 
     cur = conn.cursor()
-    
-    # Fetch required metadata: id, title, filename, manual_relevance, category_id (for back button), access_count, file_path
     cur.execute("SELECT id, title, filename, manual_relevance, category_id, access_count, file_path FROM documents WHERE id=?", (doc_id,))
     doc = cur.fetchone()
     
-    # 1. FIX: Removed the trailing backslash on the line below
     cur.execute("UPDATE documents SET access_count = access_count + 1 WHERE id=?", (doc_id,))
-    
-    # 2. This line no longer had the Syntax Error, but it should not have a backslash either
     cur.execute("INSERT INTO access_logs (document_id, event_type) VALUES (?, 'view')", (doc_id,))
     conn.commit()
     conn.close()
     
-    # Pass only the document metadata (doc) to the template
     return render_template("doc.html", doc=doc)
 
 @app.route("/rate", methods=["POST"])
@@ -105,9 +96,20 @@ def search():
     q = request.args.get("q","")
     if not q:
         return redirect(url_for("index"))
+    
+    # 1. Retrieve Chunks
     hits = retrieve(q, top_k=6)
-    # optionally increment search logs
-    return render_template("search.html", query=q, hits=hits)
+    
+    # 2. Generate Answer (AI Synthesis)
+    answer = ""
+    if hits:
+        try:
+            answer = generate_rag_answer(q, hits)
+        except Exception as e:
+            answer = f"Error generating summary: {str(e)}"
+    
+    # 3. Pass both 'hits' (sources) and 'answer' (synthesis) to template
+    return render_template("search.html", query=q, hits=hits, answer=answer)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
