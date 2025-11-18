@@ -18,11 +18,11 @@ The design architecture is:
 <p align="center">
   <img width="341" height="591" alt="image" src="https://github.com/user-attachments/assets/7d0a1162-02d3-49d2-a243-3e98e93745b4">
 
-### What the script does? 
-- ~~~ingest.py~~~ (ingestion) code scans a folder of documents, extracts text (PDF/DOCX/TXT/MD), chunks text (configurable chunk size + overlap), computes embeddings (sentence-transformers), and stores metadata in SQLite and vectors in FAISS. 
+### What do the scripts do? 
+- **ingest.py** (ingestion) code scans a folder of documents, extracts text (PDF/DOCX/TXT/MD), chunks text (configurable chunk size + overlap), computes embeddings (sentence-transformers), and stores metadata in SQLite and vectors in FAISS. 
 Note that if one prefers an external embedding API (OpenAI, Google, ...), replace the model.encode call with embedding API (but keep vector normalization for FAISS). For very large libraries, consider using IndexIVFFlat with training for FAISS (but that complicates persistence).
 
--  ~~~retrieve_rag.py~~~ simply takes top N chunks, concatenate them with short separators and citations (title - page/ chunk idx). Add system + user instructions, then call LLM (locally or via API). 
+-  **retrieve_rag.py** simply takes top N chunks, concatenate them with short separators and citations (title - page/ chunk idx). Add system + user instructions, then call LLM (locally or via API). 
 Example prompt is:
 ~~~
 System: You are a helpful research assistant. Use only the provided document excerpts to answer the question.
