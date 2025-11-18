@@ -24,7 +24,7 @@ The document encoder and the query encoder share the same weights (they are the 
 To avoid confusion (one might think that the neural nets for Q&A are trained on different data sets), models like all-MiniLM-L6-v2 are fine-tuned on vast datasets of (Query, Relevant Document, Non-Relevant Document) triplets using a technique called Contrastive Learning. This explicitly trains the single model to ensure that a relevant document's vector is closer to the query vector than a non-relevant document's vector.
 
 <p align="center">
-<img width="773" height="586" alt="Screenshot 2025-11-18 at 11 03 19" src="https://github.com/user-attachments/assets/790f57cc-59d4-4699-8967-50cc0c126b63" />
+<img width="673" height="486" alt="Screenshot 2025-11-18 at 11 03 19" src="https://github.com/user-attachments/assets/790f57cc-59d4-4699-8967-50cc0c126b63" />
 
 ### Retrieval Mechanism
 Finally, the retrieval mechanismis is provided by FAISS, an open-source library for similarity search and clustering of vectors. Retrieval finds the nearest document vectors ($V_D$) to the query vector ($V_Q$), using distance (L2 or Cosine).
