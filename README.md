@@ -20,7 +20,6 @@ For a lightweight and low-latency solution on small data base like mine, I combi
 - The Query Encoder	is still the SentenceTransformer model (loaded in retrieve_rag.py	this time). This same network encodes the user query (Q) into a vector  $V_Q$. This happens every time a query is made.
 Note that the most commong RAG architectures uses two neural nets (bi-encoder) because Q&A are semantically different. We can think of the whole model as made up of two parts: the query part and the document part (see diagram).
 
-<p align
 <img width="773" height="586" alt="Screenshot 2025-11-18 at 11 03 19" src="https://github.com/user-attachments/assets/790f57cc-59d4-4699-8967-50cc0c126b63" />
 
 
