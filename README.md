@@ -59,14 +59,15 @@ Question: <user question>
 
 ### Notes & enhancements
 
-- FAISS (IndexFlatIP) works great (low latency) for small-to-medium corpora (thousands). For many thousands or millions, move to an IVF index with training or use a small vector DB (Chroma/Weaviate/Milvus;  but at the cost of more complexity).
-- Keep embeddings dimension modest (e.g., 384) to keep memory low.
-- Chunk size: 150–500 tokens is typical. Overlap helps continuity. Adjust for your file types (slides short; papers longer).
-- Embedding model choices. all-MiniLM-L6-v2 (sentence-transformers) gives compact 384-d embeddings, fast, no external API. For higher-quality embeddings, use all-mpnet-base-v2 (768-d) or an API (e.g., Google embedding models) if you want.
-- Re-ranking. Optionally re-rank FAISS results with cross-encoder model for higher accuracy (compute cost higher; can be selective on top 20 results before final top-K).
-- Security & Privacy. Keep embeddings and local files private. If using cloud APIs, be aware of data sharing.
-- The ingestion script appends new chunks and adds to FAISS. If you change chunking or embedding model, rebuild index from scratch (script to drop old FAISS and re-ingest).
+Note: Chunk size: 150–500 tokens is typical / Overlap helps continuity / Adjust for your file types (slides short; papers longer) / Keep embeddings dimension modest (e.g., 384) to keep memory low.
 
+- Scalability: FAISS (IndexFlatIP) works great (low latency) for small-to-medium corpora (thousands). For many thousands or millions, move to an IVF index with training or use a small vector DB (Chroma/Weaviate/Milvus;  but at the cost of more complexity).
+- Embedding quality evaluation: try to build a "golden dataset" and test with common metrics such as precision, recall, nDCG.
+- Embedding model choices. all-MiniLM-L6-v2 (sentence-transformers) gives compact 384-d embeddings, fast, no external API. For higher-quality embeddings, one can try all-mpnet-base-v2 (768-d) or an API (e.g., Google embedding models).
+- Security & Privacy: keep embeddings and local files private (be aware when using cloud API). 
+- The ingestion script currently appends new chunks and adds to FAISS. If you change chunking/ embedding model, rebuild index from scratch (re-ingest).
+- Re-ranking (very optional): re-rank FAISS results with cross-encoder model for higher accuracy (compute cost higher; can be selective on top 20 results before final top-K).
+- Few-shot, LLM-based, classification of new items into the right category. 
 .......................................................................
 
 When you first run the code: 
