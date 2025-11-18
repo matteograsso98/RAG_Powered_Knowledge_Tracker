@@ -1,4 +1,4 @@
-# RAG_DB
+# RAG Powered Knowledge Tracker 
 
 ## Abstract
 This is a personal DB with RAG capabilities to keep track of the research papers, slides, documents I have been reading (and the notes I have been taking) on different topics. 
