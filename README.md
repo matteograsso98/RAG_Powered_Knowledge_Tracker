@@ -1,6 +1,6 @@
 # RAG_DB
 
-## Objective 
+## Abstract
 This is a personal DB with RAG capabilities to keep track of the research papers, slides, documents I have been reading (and the notes I have been taking) on different topics. 
 The purpose is to test/evaluate embedding techniques and vector search and vector databases, to organise and maintain the things I have been learning (and eventually to implement a few-shot, LLM-based, classification of items in categories).
 
@@ -13,7 +13,7 @@ These categories are then split into sub-categories, e.g., {Quantum Technologies
 
 The input in my case were messy documents: research papers, personal notes, etc. The format of those might be PDF, but is not strictly PDF (e.g., may be .docs).
 
-The design architecture is: 
+The architecture's design is: 
 
 <p align="center">
   <img width="341" height="591" alt="image" src="https://github.com/user-attachments/assets/7d0a1162-02d3-49d2-a243-3e98e93745b4">
@@ -50,10 +50,13 @@ Question: <user question>
 - The ingestion script appends new chunks and adds to FAISS. If you change chunking or embedding model, rebuild index from scratch (script to drop old FAISS and re-ingest).
 
 .......................................................................
+
 When you first run the code: 
 ~~~
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
 ~~~
+
+### References
+Google Whitepaper, "Embeddings & Vector Stores", Anant Nawalgaria, Xiaoqi Ren, and Charles Sugnet.
