@@ -35,7 +35,7 @@ Context:
 Question: <user question>
 ~~~
 ### How does the GUI look? 
-<img width="300" height="400" alt="Screenshot 2025-11-18 at 08 40 32" src="https://github.com/user-attachments/assets/93bcbef8-4714-4ec3-a940-969e23f138ab" />
+<img width="600" height="800" alt="Screenshot 2025-11-18 at 08 40 32" src="https://github.com/user-attachments/assets/93bcbef8-4714-4ec3-a940-969e23f138ab" />
 
 ### Notes & enhancements
 
