@@ -35,7 +35,7 @@ except ImportError:
 # -------------------------------------------------------
 
 # Initialize Gemini
-# DATA PRIVACY: Never paste the key directly in the code.
+# DATA PRIVACY (do not copy-paste the key in the code).
 api_key = os.environ.get("GEMINI_API_KEY")
 if not api_key:
     print("WARNING: GEMINI_API_KEY not found in environment variables.")
